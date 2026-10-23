@@ -1,0 +1,2 @@
+# HackRF One: allow members of plugdev to use it without root
+ATTR{idVendor}=="1d50", ATTR{idProduct}=="6089", SYMLINK+="hackrf-one-%k", MODE="660", GROUP="plugdev"

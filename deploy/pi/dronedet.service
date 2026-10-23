@@ -1,0 +1,13 @@
+[Unit]
+Description=HackRF drone detector
+After=network.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/drone-detection
+ExecStart=/home/pi/drone-detection/.venv/bin/dronedet run --source hackrf
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
