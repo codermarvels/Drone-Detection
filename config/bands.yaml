@@ -1,0 +1,23 @@
+# Each band is one entry. The detector reads only bands listed in `enabled`.
+# Adding 5.8 GHz later is a config change: uncomment ism_5g8, add it to
+# `enabled`, and train the model on 5.8 GHz captures.
+
+enabled: [ism_2g4]
+
+bands:
+  ism_2g4:
+    label: "2.4 GHz"
+    # hackrf_sweep tunes in 20 MHz steps, so it may report bins past f_max;
+    # the sweeper keeps only bins inside [f_min, f_max).
+    sweep: {f_min_mhz: 2400, f_max_mhz: 2490, bin_hz: 250000}
+    # Edges of the licensed ISM allocation, used for display.
+    display: {f_min_mhz: 2400, f_max_mhz: 2483.5}
+    gain: {lna_db: 32, vga_db: 20, amp: false}
+    capture: {sample_rate: 20000000, dwell_ms: 50}
+
+  # ism_5g8:
+  #   label: "5.8 GHz"
+  #   sweep: {f_min_mhz: 5640, f_max_mhz: 5950, bin_hz: 500000}
+  #   display: {f_min_mhz: 5650, f_max_mhz: 5925}
+  #   gain: {lna_db: 32, vga_db: 24, amp: false}
+  #   capture: {sample_rate: 20000000, dwell_ms: 50}

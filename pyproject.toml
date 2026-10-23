@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dronedet"
+version = "0.1.0"
+description = "Passive 2.4 GHz drone detector for the HackRF One, with a local CNN classifier"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "PyYAML>=6.0",
+    "onnxruntime>=1.16",
+]
+
+[project.optional-dependencies]
+train = ["torch>=2.2", "onnx>=1.15", "onnxscript>=0.1"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+dronedet = "dronedet.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+dronedet = ["output/static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: trains a tiny model (needs torch)"]

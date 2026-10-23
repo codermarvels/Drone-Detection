@@ -1,0 +1,22 @@
+# Classes the CNN is trained on. Order here is the model's output order, so
+# retrain the model after changing it. `drone: true` raises an alert.
+
+classes:
+  - {id: dji_ocusync, label: "DJI OcuSync",          drone: true,  bands: [ism_2g4, ism_5g8]}
+  - {id: wifi_drone,  label: "Wi-Fi drone",          drone: true,  bands: [ism_2g4]}
+  - {id: elrs_2g4,    label: "ExpressLRS 2.4 GHz",   drone: true,  bands: [ism_2g4]}
+  - {id: wifi,        label: "Wi-Fi",                drone: false, bands: [ism_2g4, ism_5g8]}
+  - {id: bluetooth,   label: "Bluetooth",            drone: false, bands: [ism_2g4]}
+  - {id: microwave,   label: "Microwave oven",       drone: false, bands: [ism_2g4]}
+  - {id: noise,       label: "Background noise",     drone: false, bands: [ism_2g4, ism_5g8]}
+  # 5.8 GHz classes, added with the dual-band antenna:
+  # - {id: fpv_analog,  label: "FPV analog video",  drone: true, bands: [ism_5g8]}
+  # - {id: fpv_digital, label: "FPV digital video", drone: true, bands: [ism_5g8]}
+
+decision:
+  # A track's label is the vote over its last `window` captures. A class
+  # must win `min_votes` of them, with mean probability >= `min_prob`,
+  # otherwise the track is reported as an unknown emitter.
+  window: 5
+  min_votes: 3
+  min_prob: 0.6

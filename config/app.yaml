@@ -1,0 +1,27 @@
+# Site settings. Everything runs offline once the repo is cloned.
+
+receiver:
+  # Where the HackRF is. Shown on the map. Set to your own location.
+  lat: 0.0
+  lon: 0.0
+  name: "Receiver"
+
+detect:
+  frame_ms: 100          # sweeps are max-held into frames of this length
+  baseline_s: 30         # rolling median window per bin
+  threshold_db: 8        # bin is "hot" this far above its baseline
+  min_bins: 2            # ignore single-bin blips
+  track_timeout_s: 5     # a track with no hits for this long is closed
+
+capture:
+  max_duty: 0.3          # at most 30% of time spent in IQ capture
+  per_track_interval_s: 1.0
+  captures_per_track: 5  # stop capturing a track once it has this many votes
+
+web:
+  host: 127.0.0.1
+  port: 8080
+
+paths:
+  data: data             # captures, tiles, SQLite log (gitignored)
+  model: models/cnn.onnx

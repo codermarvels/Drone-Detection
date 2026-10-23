@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drone Detection</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body data-view="overview">
+<div class="app">
+
+<nav class="sidebar" aria-label="Main">
+  <div class="brand">
+    <div class="brand-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="2"/><path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.6 5.6a9 9 0 0 0 0 12.8M18.4 5.6a9 9 0 0 1 0 12.8"/></svg>
+    </div>
+    <span>AI Based Drone<br>Detection Software</span>
+  </div>
+  <div class="nav" id="nav"></div>
+  <div class="device">
+    <div class="device-title"><span class="dot" id="dev-dot"></span><span id="dev-name">HackRF One</span></div>
+    <span class="muted small" id="dev-status">Connecting…</span>
+    <span class="muted small" id="dev-antenna">Antenna: 2.4 GHz · 5.8 GHz later</span>
+  </div>
+</nav>
+
+<main class="main">
+  <header class="top">
+    <div class="titles">
+      <span class="eyebrow">AI BASED DRONE DETECTION SOFTWARE</span>
+      <h1 id="view-title">Overview</h1>
+    </div>
+    <div class="actions">
+      <div class="seg" role="group" aria-label="Time range" id="range">
+        <button type="button" data-hours="0" class="on">Live</button>
+        <button type="button" data-hours="1">1 Hour</button>
+        <button type="button" data-hours="24">24 Hours</button>
+      </div>
+      <button type="button" class="pill" id="btn-record"><span class="rec-dot"></span><span id="rec-text">Record</span></button>
+      <button type="button" class="pill dark" id="btn-pause">Pause scan</button>
+    </div>
+  </header>
+
+  <section class="card status" aria-label="Status" data-views="overview spectrum detections map">
+    <div class="status-main">
+      <div class="status-icon" id="status-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5.5" cy="5.5" r="2.5"/><circle cx="18.5" cy="5.5" r="2.5"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/><rect x="9.5" y="9.5" width="5" height="5" rx="1.2"/><path d="M7.3 7.3l2.2 2.2M16.7 7.3l-2.2 2.2M7.3 16.7l2.2-2.2M16.7 16.7l-2.2-2.2"/></svg>
+      </div>
+      <div class="col">
+        <span class="headline"><span id="headline">Starting…</span> <span class="live" id="live-tag">· LIVE</span></span>
+        <span class="muted" id="subline"></span>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat"><span class="muted small">Signals</span><span class="stat-v" id="st-signals">0</span></div>
+      <div class="stat" title="Decoding DJI DroneID is planned after v1"><span class="muted small">IDs decoded</span><span class="stat-v" id="st-ids">—</span></div>
+      <div class="stat" title="HackRF sweep power, not calibrated to dBm"><span class="muted small">Strongest</span><span class="stat-v"><span id="st-strong">—</span><span class="unit"> dB</span></span></div>
+    </div>
+  </section>
+
+  <div class="row">
+    <section class="card spectrum grow" aria-label="Spectrum" data-views="overview spectrum">
+      <div class="card-head">
+        <div class="baseline-row"><h2>Spectrum</h2><span class="muted small" id="band-range"></span></div>
+        <div class="seg small" role="group" aria-label="Band" id="band-seg"></div>
+      </div>
+      <canvas id="spec" height="118" aria-label="Live power spectrum" role="img"></canvas>
+      <div class="axis" id="axis"></div>
+      <canvas id="wf" height="80" aria-label="Waterfall" role="img"></canvas>
+      <span class="muted tiny" id="wf-caption">Waterfall</span>
+    </section>
+
+    <section class="card map-card side" aria-label="Map" data-views="overview map">
+      <div class="baseline-row"><h2>Location</h2><span class="muted small" id="map-sub">Receiver</span></div>
+      <div class="map" id="map">
+        <div class="map-tiles" id="map-tiles"></div>
+        <div class="marker me" id="me-marker" title="Receiver"></div>
+        <div class="map-note" id="map-note"></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="row">
+    <section class="card list grow" aria-label="Detections" data-views="overview detections">
+      <div class="card-head pad">
+        <h2 id="det-title">Detections</h2>
+        <a href="#detections" id="see-all">See all</a>
+      </div>
+      <div id="det-list"></div>
+    </section>
+
+    <section class="card ai side" aria-label="AI analysis" data-views="overview detections">
+      <div class="card-head"><h2>AI Analysis</h2><span class="muted small" id="ai-track"></span></div>
+      <div class="ai-top">
+        <div class="ring" id="ring"><div class="ring-in" id="ring-v">–</div></div>
+        <div class="col"><span class="strong" id="ai-label">No signal selected</span><span class="muted small" id="ai-sub"></span></div>
+      </div>
+      <div id="ai-bars"></div>
+      <div class="note" id="ai-note" hidden></div>
+    </section>
+  </div>
+
+  <section class="card pad-l" aria-label="Recordings" data-views="recordings">
+    <h2>Record labelled samples</h2>
+    <p class="muted">Recording saves every IQ capture the detector takes, with the label below, into <code id="cap-dir">data/captures</code>. Record each drone at a few distances, indoors and out, and record the empty band at the same place as a background session. You can fix a label later with <code>dronedet label</code>.</p>
+    <form class="form" id="rec-form">
+      <label>Class<select id="f-class"></select></label>
+      <label>Drone or device<input id="f-model" placeholder="e.g. DJI Mini 4 Pro"></label>
+      <label>Distance (m)<input id="f-dist" type="number" min="0" step="1"></label>
+      <label>Environment<select id="f-env"><option value="">–</option><option>outdoor</option><option>indoor</option></select></label>
+      <label class="wide">Notes<input id="f-notes"></label>
+      <button type="submit" class="pill dark" id="f-submit">Start recording</button>
+    </form>
+    <h2 class="mt">Sessions</h2>
+    <div class="table-wrap"><table class="table" id="sess-table"><thead><tr><th>Session</th><th>Class</th><th>Device</th><th>Captures</th><th>Source</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section class="card pad-l" aria-label="AI model" data-views="model">
+    <h2>AI model</h2>
+    <div id="model-body"></div>
+  </section>
+
+  <section class="card pad-l" aria-label="Settings" data-views="settings">
+    <h2>Settings</h2>
+    <p class="muted">Settings live in <code>config/</code>: bands in <code>bands.yaml</code>, classes and vote rules in <code>classes.yaml</code>, location, thresholds and web port in <code>app.yaml</code>. Restart <code>dronedet run</code> after a change.</p>
+    <div id="settings-body"></div>
+  </section>
+</main>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>
