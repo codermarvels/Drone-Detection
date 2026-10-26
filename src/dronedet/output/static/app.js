@@ -225,7 +225,7 @@
       return s;
     }
     if (j.kind === "calibrate") return "Noise floor " + r.noise_floor_db + " dB over " + r.sweeps + " sweeps. Details on the Settings page.";
-    if (j.kind === "install") return "PyTorch is installed. You can train now.";
+    if (j.kind === "install") return "PyTorch is ready. You can train now.";
     if (j.kind === "synth") return (r.sessions || 0) + " synthetic sessions written. They only test the pipeline.";
     if (j.kind === "tiles") return "Map tiles saved. The map now works offline.";
     return "";
@@ -549,8 +549,13 @@
         (unlabelled ? " · " + unlabelled + " unlabelled " + (unlabelled === 1 ? "session" : "sessions") + " left out" : "") +
         (!real && S.sessions.length ? " · synthetic data only" : "");
     }
-    var tools = S.settings ? S.settings.training_tools : true;
+    var tools = S.settings ? S.settings.training_tools && !S.settings.training_tools_conflict : true;
+    var clash = !!(S.settings && S.settings.training_tools_conflict);
     $("tools-note").hidden = tools;
+    $("tools-text").textContent = clash
+      ? "PyTorch was installed with pip, and on this Mac it clashes with the conda environment (training stops with an OpenMP error). Repair it once: this swaps in conda-forge's PyTorch (a few hundred MB, needs internet)."
+      : "Training needs PyTorch, which is not installed in this Python yet. Install it once (about 300 MB, needs internet), then train offline from then on.";
+    $("btn-install").textContent = clash ? "Repair training tools" : "Install training tools";
     var job = busyJob();
     $("btn-train").disabled = !tools || !!job;
     $("btn-synth").disabled = !!job;

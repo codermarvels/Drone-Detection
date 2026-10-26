@@ -190,7 +190,7 @@ def test_train_job_runs_in_its_own_process(server, monkeypatch):
 
     call("/api/train", {"epochs": 13})  # the training process dies: the job fails, the app keeps running
     job = finished()
-    assert job["state"] == "failed" and "134" in job["error"] and "OMP" in job["error"], job
+    assert job["state"] == "failed" and "Repair training tools" in job["error"], job
     assert call("/api/start", {"source": "sim"})["running"]
 
     call("/api/train", {"epochs": 200})
@@ -221,3 +221,23 @@ def test_train_cli_reports_progress(cfg_rw, monkeypatch, capsys):
     msgs = [json.loads(ln) for ln in capsys.readouterr().out.splitlines() if ln.startswith("{")]
     assert any(m.get("stage", "").startswith("Reading recordings · 4 of 4") for m in msgs)
     assert msgs[-1]["result"]["split"] == "x"
+
+
+def test_pip_torch_in_conda_env_is_a_conflict(tmp_path, monkeypatch):
+    import importlib.util
+    import sys
+
+    from dronedet import control
+
+    (tmp_path / "conda-meta").mkdir()
+    conda = tmp_path / "bin" / "conda"
+    conda.parent.mkdir()
+    conda.write_text("")
+    monkeypatch.setattr(sys, "prefix", str(tmp_path))
+    monkeypatch.setenv("CONDA_EXE", str(conda))
+    real = importlib.util.find_spec
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name, *a: object() if name == "torch" else real(name, *a))
+    assert control.conda_exe() == str(conda)
+    assert control.torch_conflicts_with_conda()  # torch importable, but no conda-meta/pytorch-*.json
+    (tmp_path / "conda-meta" / "pytorch-2.5.1-cpu_generic_py311.json").write_text("{}")
+    assert not control.torch_conflicts_with_conda()

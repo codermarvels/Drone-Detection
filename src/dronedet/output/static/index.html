@@ -137,7 +137,7 @@
     <div class="card-head"><h2>Train the AI model</h2><span class="muted small" id="train-sum"></span></div>
     <p class="muted">Training uses every labelled session on the Recordings page, tests on whole sessions it did not train on, and loads the new model into the detector when it finishes. It runs on this computer's CPU, a few minutes for a few thousand captures.</p>
     <div class="table-wrap"><table class="table" id="data-table"><thead><tr><th>Class</th><th>Sessions</th><th>Captures</th><th>Ready?</th></tr></thead><tbody></tbody></table></div>
-    <div class="note" id="tools-note" hidden>Training needs PyTorch, which is not installed in this Python yet. Install it once (about 300 MB, needs internet), then train offline from then on. <button type="button" class="pill inline" id="btn-install">Install training tools</button></div>
+    <div class="note" id="tools-note" hidden><span id="tools-text"></span> <button type="button" class="pill inline" id="btn-install">Install training tools</button></div>
     <form class="form" id="train-form">
       <label>Epochs<input id="t-epochs" type="number" min="1" max="200" value="20"></label>
       <label class="check"><input type="checkbox" id="t-synth"> Mix in synthetic test sessions</label>

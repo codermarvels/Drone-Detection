@@ -68,6 +68,31 @@ def training_tools_available() -> bool:
     return all(importlib.util.find_spec(m) is not None for m in ("torch", "onnx"))
 
 
+def conda_exe() -> str | None:
+    """The conda that manages this Python's environment, or None if it is not a conda env."""
+    if not (Path(sys.prefix) / "conda-meta").is_dir():
+        return None
+    candidates = [os.environ.get("CONDA_EXE"), os.environ.get("MAMBA_EXE"), shutil.which("conda"),
+                  str(Path(sys.prefix).parent.parent / "bin" / "conda"), str(Path(sys.prefix) / "bin" / "conda")]
+    return next((c for c in candidates if c and Path(c).is_file()), None)
+
+
+def torch_conflicts_with_conda() -> bool:
+    """True when PyTorch came from pip into a conda env.
+
+    pip's PyTorch for macOS bundles its own OpenMP runtime, while conda-forge's
+    numpy loads conda's llvm-openmp; with both in one process training aborts
+    with "OMP: Error #15". conda-forge's own pytorch shares conda's runtime.
+    """
+    if conda_exe() is None or importlib.util.find_spec("torch") is None:
+        return False
+    return not any((Path(sys.prefix) / "conda-meta").glob("pytorch-*.json"))
+
+
+OMP_CLASH = ("PyTorch was installed with pip and clashes with this conda environment (two OpenMP runtimes). "
+             "Press Repair training tools on the AI Model page, then train again.")
+
+
 def hackrf_tools_available() -> bool:
     from .radio.hackrf import tools_available
 
@@ -203,6 +228,7 @@ class Controller:
             "calibration": self.last_calibration(),
             "hackrf_tools": hackrf_tools_available(),
             "training_tools": training_tools_available(),
+            "training_tools_conflict": torch_conflicts_with_conda(),
             "root": str(self.cfg.root),
         }
 
@@ -350,6 +376,8 @@ class Controller:
     def train(self, epochs: int = 20, include_synthetic: bool = False, min_snr: float = 6.0) -> dict:
         if not training_tools_available():
             raise RuntimeError("Training needs PyTorch and ONNX. Press Install training tools first.")
+        if torch_conflicts_with_conda():
+            raise RuntimeError(OMP_CLASH)
         epochs = max(1, min(int(epochs), 200))
 
         def work(job: Job):
@@ -384,6 +412,8 @@ class Controller:
                     result = msg["result"]
             code = job.proc.wait()
             job.check()
+            if code != 0 and any("OMP: Error #15" in ln or "copies of the OpenMP" in ln for ln in job.log):
+                raise RuntimeError(OMP_CLASH)
             if code != 0 or result is None:
                 tail = [ln for ln in job.log[-6:] if ln.strip()]
                 raise RuntimeError(f"the training process stopped (exit code {code}): "
@@ -407,11 +437,23 @@ class Controller:
 
     def install_training_tools(self) -> dict:
         def work(job: Job):
-            job.stage = "Installing PyTorch and ONNX (a few hundred MB, needs internet once)"
-            self._subprocess(job, [sys.executable, "-m", "pip", "install", "torch>=2.2", "onnx>=1.15",
-                                   "onnxscript>=0.1"])
+            conda = conda_exe()
+            if conda:
+                # In a conda env, take PyTorch from conda-forge so it shares the env's OpenMP runtime.
+                if importlib.util.find_spec("torch") is not None and torch_conflicts_with_conda():
+                    job.stage = "Removing the pip copy of PyTorch"
+                    self._subprocess(job, [sys.executable, "-m", "pip", "uninstall", "-y", "torch"])
+                job.stage = "Installing PyTorch and ONNX from conda-forge (a few hundred MB, needs internet once)"
+                self._subprocess(job, [conda, "install", "-y", "-p", sys.prefix, "-c", "conda-forge",
+                                       "--override-channels", "pytorch", "onnx", "onnxscript"])
+            else:
+                job.stage = "Installing PyTorch and ONNX (a few hundred MB, needs internet once)"
+                self._subprocess(job, [sys.executable, "-m", "pip", "install", "torch>=2.2", "onnx>=1.15",
+                                       "onnxscript>=0.1"])
             if not training_tools_available():
-                raise RuntimeError("pip finished but PyTorch still cannot be imported")
+                raise RuntimeError("the install finished but PyTorch still cannot be imported")
+            if torch_conflicts_with_conda():
+                raise RuntimeError("PyTorch is still the pip copy; see the details above")
             return {"ok": True}
 
         return self._run_job("install", "Installing training tools", work)
