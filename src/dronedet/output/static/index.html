@@ -182,10 +182,11 @@
       <div class="wide rec-row"><button type="submit" class="pill dark">Save location</button><button type="button" class="pill" id="btn-geo">Use this computer's location</button><span class="muted small" id="loc-msg"></span></div>
     </form>
     <h3>Offline map</h3>
-    <p class="muted">Downloads OpenStreetMap tiles around the receiver once, so the map works offline afterwards. Needs internet for this step only.</p>
+    <p class="muted">Downloads map tiles around the receiver once, so the map works offline afterwards. Needs internet for this step only. OpenStreetMap allows only small areas and may refuse; if it does, paste another provider's tile URL (many give a free key), or copy an MBTiles map file to <code>data/map.mbtiles</code>, which is used instead of downloaded tiles.</p>
     <div class="form">
       <label>Area<select id="s-radius"><option value="0.5">0.5 km around</option><option value="1" selected>1 km around</option><option value="1.5">1.5 km around</option></select></label>
-      <div class="rec-row end"><button type="button" class="pill" id="btn-tiles">Download map</button></div>
+      <label class="wide">Tile server (optional)<input id="s-tileurl" placeholder="https://tile.openstreetmap.org/{z}/{x}/{y}.png" spellcheck="false"></label>
+      <div class="wide rec-row"><button type="button" class="pill" id="btn-tiles">Download map</button><button type="button" class="pill" id="btn-tiles-del">Delete downloaded map</button><span class="muted small" id="tiles-msg"></span></div>
     </div>
   </section>
 
