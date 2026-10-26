@@ -151,3 +151,39 @@ def test_train_job_loads_model(server):
     st = call("/api/state")
     assert st["control"]["job"]["state"] == "done", st["control"]["job"]
     assert st["model"]["loaded"] and st["model"]["synthetic_only"]
+
+
+def test_train_job_progress_and_cancel(server, monkeypatch):
+    """The job plumbing around train(), with a stand-in for PyTorch so it runs anywhere."""
+    from dronedet import control
+    from dronedet.training import synth
+    from dronedet.training import train as train_mod
+
+    ctl, call = server
+    drones = {c.id for c in ctl.cfg.classes if c.drone}
+    synth.make_sessions(ctl.captures_dir, ["wifi", "noise"], drones, sessions_per_class=1,
+                        captures_per_session=2, n=200_000)
+    monkeypatch.setattr(control, "training_tools_available", lambda: True)
+    seen = []
+
+    def fake_train(ds, out, drones, epochs, progress, **kw):
+        assert len(ds.y) == 4
+        for ep in range(epochs):
+            progress({"epoch": ep + 1, "epochs": epochs, "fraction": (ep + 1) / epochs, "loss": 0.5})
+            seen.append(ep)
+            time.sleep(0.05 if epochs < 50 else 0.2)
+        return {"metrics": {"test_accuracy": 0.5, "n_test": 2, "split": "by_session"}, "warnings": ["synthetic"]}
+
+    monkeypatch.setattr(train_mod, "train", fake_train)
+    call("/api/train", {"epochs": 3})
+    assert wait(lambda: call("/api/state")["control"]["job"]["state"] != "running")
+    job = call("/api/state")["control"]["job"]
+    assert job["state"] == "done" and job["result"]["test_accuracy"] == 0.5, job
+    assert job["progress"] == 1.0 and seen == [0, 1, 2]
+
+    call("/api/train", {"epochs": 100})
+    assert wait(lambda: len(seen) > 4)
+    call("/api/job/cancel", {})
+    assert wait(lambda: call("/api/state")["control"]["job"]["state"] != "running")
+    assert call("/api/state")["control"]["job"]["state"] == "cancelled"
+    assert len(seen) < 103
