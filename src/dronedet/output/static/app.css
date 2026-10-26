@@ -105,3 +105,33 @@ body[data-view="spectrum"] #spec{height:260px}body[data-view="spectrum"] #wf{hei
 body[data-view="map"] .map{min-height:520px}
 body:not([data-view="overview"]) #see-all{display:none}
 @media (max-width:600px){.stat{padding:2px 14px}.headline{font-size:17px}}
+h3{margin:8px 0 0;font-size:14px;font-weight:600}
+.pill:disabled,.seg button:disabled{opacity:.45;cursor:not-allowed}
+.pill.inline{display:inline-flex;min-height:28px;margin-left:6px;vertical-align:middle}
+.src-seg{margin-top:6px;align-self:flex-start}
+.job{padding:12px 18px;display:flex;flex-direction:column;gap:8px}
+.job[hidden]{display:none}
+.job-main{display:flex;align-items:center;gap:12px}
+.grow-1{flex:1}
+.job.failed{background:#FFF1F0}.job.failed #job-stage{color:var(--red-ink)}
+.job.done #job-stage{color:var(--ink)}
+.progress{height:6px;border-radius:3px;background:var(--soft);overflow:hidden}
+.progress[hidden]{display:none}
+.progress-fill{height:6px;border-radius:3px;background:var(--blue);transition:width .4s}
+.job.done .progress-fill{background:var(--green)}
+.progress.indeterminate .progress-fill{animation:slide 1.4s ease-in-out infinite}
+@keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(340%)}}
+.job-log pre{margin:6px 0 0;max-height:180px;overflow:auto;font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--soft);padding:8px 10px;border-radius:8px;white-space:pre-wrap}
+.job-log summary{cursor:pointer}
+.rec-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.rec-row.end{align-self:end;min-height:36px}
+.form label.check{flex-direction:row;align-items:center;gap:8px;min-height:36px;color:var(--ink);font-size:13px}
+.form label.check input{width:16px;height:16px;min-height:0}
+button.link{border:none;background:none;padding:0 6px;color:#0066CC;font:13px inherit;font-family:inherit;cursor:pointer}
+button.link:hover{text-decoration:underline}button.link.danger{color:var(--red-ink)}button.link:disabled{color:var(--muted);cursor:not-allowed;text-decoration:none}
+.table td.acts{white-space:nowrap;text-align:right}
+.table td.warn{color:#8A4B00}.table td.ok{color:#248A3D}
+.table td.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+.table tr.edit td{background:#F5F9FF;padding:12px}
+[hidden]{display:none !important}
+.form .wide{grid-column:1/-1}

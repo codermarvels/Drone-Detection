@@ -8,6 +8,7 @@ import logging
 import signal
 import sys
 import time
+import webbrowser
 from pathlib import Path
 
 from . import config as config_mod
@@ -15,47 +16,52 @@ from . import config as config_mod
 log = logging.getLogger("dronedet")
 
 
+def _source_opts(args) -> dict:
+    return {"sweeps": getattr(args, "sweeps", None), "iq": getattr(args, "iq", None),
+            "fast": getattr(args, "fast", False), "loop": getattr(args, "loop", False),
+            "duration": getattr(args, "duration", None), "seed": getattr(args, "seed", 0)}
+
+
 def _source(args, cfg):
-    band = cfg.band
-    kind = args.source
-    if kind == "auto":
-        from .radio.hackrf import tools_available
+    from .control import make_source
 
-        kind = "hackrf" if tools_available() else "sim"
-        if kind == "sim":
-            log.warning("HackRF tools not found: running the simulator. Use --source hackrf to insist on the radio.")
-    if kind == "hackrf":
-        from .radio.hackrf import HackRFSource
-
-        return HackRFSource(band)
-    if kind == "sim":
-        from .radio.sim import SimSource
-
-        return SimSource(band, realtime=not getattr(args, "fast", False), duration_s=getattr(args, "duration", None),
-                         seed=getattr(args, "seed", 0))
-    if kind == "replay":
-        from .radio.replay import ReplaySource
-
-        return ReplaySource(band, sweep_csv=args.sweeps, iq_dir=args.iq, realtime=not getattr(args, "fast", False),
-                            loop=getattr(args, "loop", False))
-    raise SystemExit(f"unknown source {kind}")
+    try:
+        return make_source(cfg, args.source, **_source_opts(args))
+    except (ValueError, RuntimeError) as e:
+        raise SystemExit(str(e))
 
 
 def cmd_run(args, cfg):
+    from .control import Controller
     from .output.store import Store
     from .output.web import serve
-    from .pipeline import Pipeline
 
-    src = _source(args, cfg)
     store = Store(cfg.path("data") / "detections.sqlite")
-    pipe = Pipeline(cfg, src, model_path=args.model, store=store)
+    ctl = Controller(cfg, store, model_path=args.model, source_opts=_source_opts(args))
     httpd = None
     if not args.no_web:
         host = args.host or cfg.app["web"]["host"]
         port = args.port or cfg.app["web"]["port"]
-        httpd = serve(pipe, store, cfg.path("data"), host, port)
-        print(f"Dashboard: http://{'localhost' if host in ('127.0.0.1', '0.0.0.0') else host}:{port}")
-    print(f"Watching {cfg.band.label} with input '{src.name}'. Ctrl+C to stop.")
+        url = f"http://{'localhost' if host in ('127.0.0.1', '0.0.0.0') else host}:{port}"
+        try:
+            httpd = serve(ctl, store, cfg.path("data"), host, port)
+        except OSError as e:
+            if args.open:
+                webbrowser.open(url)
+            raise SystemExit(f"Port {port} is in use ({e.strerror}): the dashboard is probably already running "
+                             f"at {url}")
+        print(f"Dashboard: {url}")
+        if args.open:
+            webbrowser.open(url)
+    if not args.idle:
+        st = ctl.start(args.source)
+        if st["error"]:
+            print(f"Could not start '{args.source}': {st['error']}", file=sys.stderr)
+            if args.no_web:
+                raise SystemExit(1)
+        else:
+            print(f"Watching {cfg.band.label} with input '{ctl.kind}'.")
+    print("Start, stop, record and train from the dashboard. Ctrl+C here quits." if httpd else "Ctrl+C to stop.")
     stop = {"flag": False}
 
     def _sig(*_):
@@ -63,18 +69,22 @@ def cmd_run(args, cfg):
 
     signal.signal(signal.SIGINT, _sig)
     signal.signal(signal.SIGTERM, _sig)
-    pipe.start()
     try:
-        while not stop["flag"] and pipe._thread and pipe._thread.is_alive():
+        while not stop["flag"] and not ctl.shutdown.is_set():
+            if args.no_web and not ctl.running:
+                break  # nothing to control without the dashboard: end with the input
             time.sleep(0.5)
     finally:
-        pipe.stop()
+        snap = ctl.pipeline.snapshot()
+        ctl.close()
         if httpd:
             httpd.shutdown()
         store.close()
+    if ctl.shutdown.is_set():
+        print("Shut down from the dashboard. You can close this window.")
     if args.no_web:
         print(json.dumps([{k: v for k, v in r.items() if k in ("id", "label", "confidence", "summary", "center_hz")}
-                          for r in pipe.snapshot()["tracks"]], indent=2))
+                          for r in snap["tracks"]], indent=2))
 
 
 def cmd_record(args, cfg):
@@ -157,9 +167,7 @@ def cmd_train(args, cfg):
     data = Path(args.data) if args.data else cfg.path("data") / "captures"
     ds = dataset.load(data, cfg.class_ids(), drones, cache_dir=cfg.path("data") / "cache" / "tiles",
                       min_snr_db=args.min_snr)
-    if not args.include_synthetic and ds.report.get("real_samples", 0) and ds.synthetic.any():
-        keep = ~ds.synthetic
-        ds.X, ds.y, ds.session, ds.synthetic = ds.X[keep], ds.y[keep], ds.session[keep], ds.synthetic[keep]
+    if not args.include_synthetic and dataset.drop_synthetic_if_real(ds):
         print("Real captures found, so synthetic sessions are left out (use --include-synthetic to mix them in).")
     print(f"{len(ds.y)} captures from {ds.report['sessions_used']} sessions "
           f"({ds.report['captures_dropped_empty']} empty captures dropped).")
@@ -185,15 +193,13 @@ def cmd_calibrate(args, cfg):
         src.close()
     if not sweeps:
         raise SystemExit("No sweep received. Check `hackrf_info` and the antenna.")
-    sweeps = np.stack(sweeps)
-    sw = sweeps.max(axis=0)
-    centers = cfg.band.bin_centers()
-    floor = float(np.median(np.percentile(sweeps, 10, axis=0)))
-    print(f"Noise floor: {floor:.1f} dB over {len(sweeps)} sweeps (HackRF dB, not calibrated dBm)")
-    top = np.argsort(sw)[::-1][:8]
-    for i in sorted(top):
-        print(f"  {centers[i] / 1e6:8.2f} MHz  {sw[i]:6.1f} dB  (+{sw[i] - floor:.1f})")
-    print("Strongest bins (max over the sweeps). Nearby Wi-Fi usually shows around 2412, 2437 or 2462 MHz.")
+    from .control import summarize_sweeps
+
+    r = summarize_sweeps(np.stack(sweeps), cfg.band.bin_centers())
+    print(f"Noise floor: {r['noise_floor_db']:.1f} dB over {r['sweeps']} sweeps (HackRF dB, not calibrated dBm)")
+    for b in r["strongest"]:
+        print(f"  {b['mhz']:8.2f} MHz  {b['db']:6.1f} dB  (+{b['above_floor_db']:.1f})")
+    print("Strongest signals (max over the sweeps). Nearby Wi-Fi usually shows around 2412, 2437 or 2462 MHz.")
 
 
 def main(argv=None):
@@ -214,6 +220,8 @@ def main(argv=None):
     p.add_argument("--model", help="ONNX model (default from config/app.yaml)")
     p.add_argument("--host"); p.add_argument("--port", type=int)
     p.add_argument("--no-web", action="store_true")
+    p.add_argument("--open", action="store_true", help="open the dashboard in the browser")
+    p.add_argument("--idle", action="store_true", help="start with the detector stopped; start it from the dashboard")
     p.add_argument("--duration", type=float, help="sim: stop after this many seconds")
     p.add_argument("--loop", action="store_true", help="replay: loop the file")
     p.set_defaults(fn=cmd_run)

@@ -106,6 +106,7 @@ class HackRFSource:
         self._reader: threading.Thread | None = None
         self._lock = threading.Lock()
         self._closed = False
+        self.problem: str | None = None  # shown on the dashboard while the radio is not delivering sweeps
         self._start_sweep()
 
     def _sweep_cmd(self) -> list[str]:
@@ -152,12 +153,18 @@ class HackRFSource:
     def frames(self) -> Iterator[SweepFrame]:
         while not self._closed:
             try:
-                yield self._q.get(timeout=1.0)
+                frame = self._q.get(timeout=1.0)
             except queue.Empty:
                 if self._proc and self._proc.poll() is not None and not self._lock.locked():
                     log.warning("hackrf_sweep exited (code %s); restarting", self._proc.returncode)
+                    self.problem = (f"hackrf_sweep stopped (exit code {self._proc.returncode}) and is being "
+                                    "restarted. Is the HackRF plugged in, and not in use by another program?")
                     time.sleep(1)
-                    self._start_sweep()
+                    if not self._closed:
+                        self._start_sweep()
+                continue
+            self.problem = None
+            yield frame
 
     def capture(self, center_hz: float) -> Capture | None:
         b = self.band
