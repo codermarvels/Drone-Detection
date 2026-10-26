@@ -117,6 +117,12 @@
     }).catch(function () {
       $("dev-dot").style.background = "#FF3B30";
       $("dev-status").textContent = "The app is not running. Open it with the Drone Detector launcher.";
+      if (!$("job").hidden) {  // the job's last state is stale now: say so rather than look stuck
+        $("job").className = "card job failed";
+        $("job-title").textContent = "Lost contact with the app";
+        $("job-stage").textContent = "The app stopped responding. Look in its Terminal window for an error, then open it again with the Drone Detector launcher.";
+        $("job-bar").hidden = true; $("job-cancel").hidden = true; $("job-close").hidden = false;
+      }
     }).then(function () { pollTimer = setTimeout(poll, 500); });
   }
   function kick() { pollTimer && clearTimeout(pollTimer); pollTimer = setTimeout(poll, 50); }
@@ -196,7 +202,7 @@
     if (j.state === "failed") title += " failed";
     if (j.state === "cancelled") title += " cancelled";
     $("job-title").textContent = title;
-    var stage = j.state === "running" ? j.stage : j.state === "failed" ? j.error : jobSummary(j);
+    var stage = j.state === "running" ? (j.stage || "Working") + " · " + elapsed(Date.now() / 1000 - j.started) : j.state === "failed" ? j.error : jobSummary(j);
     $("job-stage").textContent = stage || "";
     var pct = j.state === "done" ? 100 : j.progress == null ? null : Math.round(j.progress * 100);
     $("job-bar").classList.toggle("indeterminate", pct == null && j.state === "running");
@@ -206,6 +212,10 @@
     $("job-close").hidden = j.state === "running";
     var log = j.log.join("\n");
     if ($("job-log").textContent !== log) $("job-log").textContent = log;
+  }
+  function elapsed(s) {
+    s = Math.max(0, Math.round(s));
+    return s < 60 ? s + " s" : Math.floor(s / 60) + " min " + (s % 60 < 10 ? "0" : "") + (s % 60) + " s";
   }
   function jobSummary(j) {
     var r = j.result || {};

@@ -151,3 +151,73 @@ def test_train_job_loads_model(server):
     st = call("/api/state")
     assert st["control"]["job"]["state"] == "done", st["control"]["job"]
     assert st["model"]["loaded"] and st["model"]["synthetic_only"]
+
+
+FAKE_TRAIN = """
+import json, sys, time
+epochs = int(sys.argv[1])
+print("some log line", flush=True)
+for ep in range(epochs):
+    print(json.dumps({"stage": f"Training · epoch {ep + 1} of {epochs}", "fraction": (ep + 1) / epochs}), flush=True)
+    time.sleep(0.05)
+if epochs == 13:
+    print("OMP: Error #15: Initializing libomp.dylib", flush=True)
+    sys.exit(134)
+print(json.dumps({"result": {"test_accuracy": 0.5, "n_test": 2, "split": "by_session", "warnings": []}}), flush=True)
+"""
+
+
+def test_train_job_runs_in_its_own_process(server, monkeypatch):
+    """Progress, result, a crash and cancel, with a stand-in for the training process."""
+    import sys
+
+    from dronedet import control
+
+    ctl, call = server
+    monkeypatch.setattr(control, "training_tools_available", lambda: True)
+    monkeypatch.setattr(ctl, "_train_cmd", lambda epochs, *a: [sys.executable, "-c", FAKE_TRAIN, str(epochs)])
+
+    def finished():
+        assert wait(lambda: call("/api/state")["control"]["job"]["state"] != "running")
+        return call("/api/state")["control"]["job"]
+
+    call("/api/start", {"source": "sim"})
+    call("/api/train", {"epochs": 3})
+    call("/api/stop", {})  # stopping the detector mid-training does not touch the job
+    job = finished()
+    assert job["state"] == "done" and job["result"]["test_accuracy"] == 0.5, job
+    assert job["progress"] == 1.0 and "some log line" in job["log"]
+
+    call("/api/train", {"epochs": 13})  # the training process dies: the job fails, the app keeps running
+    job = finished()
+    assert job["state"] == "failed" and "134" in job["error"] and "OMP" in job["error"], job
+    assert call("/api/start", {"source": "sim"})["running"]
+
+    call("/api/train", {"epochs": 200})
+    assert wait(lambda: (call("/api/state")["control"]["job"]["progress"] or 0) > 0.02)
+    call("/api/job/cancel", {})
+    assert finished()["state"] == "cancelled"
+
+
+def test_train_cli_reports_progress(cfg_rw, monkeypatch, capsys):
+    """`dronedet train --progress-json` prints the lines the dashboard reads."""
+    from dronedet import cli
+    from dronedet.training import synth
+    from dronedet.training import train as train_mod
+
+    drones = {c.id for c in cfg_rw.classes if c.drone}
+    synth.make_sessions(cfg_rw.path("data") / "captures", ["wifi", "noise"], drones, sessions_per_class=1,
+                        captures_per_session=2, n=200_000)
+
+    def fake_train(ds, out, drones, epochs, seed, progress):
+        assert len(ds.y) == 4
+        progress({"epoch": 1, "epochs": epochs, "fraction": 1.0, "loss": None})
+        return {"metrics": {"test_accuracy": None, "n_test": 0, "split": "x", "per_class_recall": {}},
+                "warnings": []}
+
+    monkeypatch.setattr(train_mod, "train", fake_train)
+    cli.main(["--root", str(cfg_rw.root), "train", "--progress-json", "--epochs", "1",
+              "--data", str(cfg_rw.path("data") / "captures"), "--out", str(cfg_rw.path("model"))])
+    msgs = [json.loads(ln) for ln in capsys.readouterr().out.splitlines() if ln.startswith("{")]
+    assert any(m.get("stage", "").startswith("Reading recordings · 4 of 4") for m in msgs)
+    assert msgs[-1]["result"]["split"] == "x"

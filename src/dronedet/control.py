@@ -13,6 +13,7 @@ import importlib
 import importlib.util
 import json
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -352,44 +353,57 @@ class Controller:
         epochs = max(1, min(int(epochs), 200))
 
         def work(job: Job):
-            from .training import dataset, train as train_mod
-
-            drones = {c.id for c in self.cfg.classes if c.drone}
-            job.stage = "Loading recordings"
-            job.say("Turning captures into spectrogram tiles (cached after the first time)…")
-            ds = dataset.load(self.captures_dir, self.cfg.class_ids(), drones,
-                              cache_dir=self.cfg.path("data") / "cache" / "tiles", min_snr_db=min_snr)
-            job.check()
-            if not include_synthetic and dataset.drop_synthetic_if_real(ds):
-                job.say("Real captures found, so synthetic sessions are left out.")
-            job.say(f"{len(ds.y)} captures from {ds.report['sessions_used']} sessions "
-                    f"({ds.report['captures_dropped_empty']} empty captures dropped).")
-            job.stage = "Training"
+            # Training runs in its own Python process: PyTorch and onnxruntime in one process can
+            # abort it on macOS (two OpenMP runtimes), and a crash there must not take the
+            # dashboard and the detector down with it. Cancel terminates the process.
+            job.stage = "Starting the training process"
             job.progress = 0.0
-
-            def progress(p):
-                job.check()
-                job.progress = p["fraction"]
-                stage = f"Training · epoch {p['epoch']} of {p['epochs']}"
-                if p["loss"] is not None:
-                    stage += f" · loss {p['loss']:.3f}"
-                if stage != job.stage:
-                    job.stage = stage
-                    if p["loss"] is not None:
-                        job.say(f"epoch {p['epoch'] - 1} done, loss {p['loss']:.4f}")
-
-            card = train_mod.train(ds, self.model_path, drones, epochs=epochs, progress=progress)
+            cmd = self._train_cmd(epochs, include_synthetic, min_snr)
+            job.say("$ " + " ".join(cmd))
+            job.proc = subprocess.Popen(cmd, cwd=self.cfg.root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                        text=True, bufsize=1, env={**os.environ, "PYTHONUNBUFFERED": "1"})
+            assert job.proc.stdout
+            result = None
+            for line in job.proc.stdout:
+                line = line.rstrip()
+                msg = None
+                if line.startswith("{"):
+                    try:
+                        msg = json.loads(line)
+                    except json.JSONDecodeError:
+                        pass
+                if msg is None:
+                    if line:
+                        job.say(line)
+                    continue
+                if "stage" in msg:
+                    job.stage = msg["stage"]
+                if msg.get("fraction") is not None:
+                    job.progress = float(msg["fraction"])
+                if "result" in msg:
+                    result = msg["result"]
+            code = job.proc.wait()
+            job.check()
+            if code != 0 or result is None:
+                tail = [ln for ln in job.log[-6:] if ln.strip()]
+                raise RuntimeError(f"the training process stopped (exit code {code}): "
+                                   + (tail[-1] if tail else "no output"))
             job.stage = "Loading the new model"
-            loaded = self.pipeline.reload_model()
-            m = card["metrics"]
-            job.say("Held-out accuracy: " + ("not measured" if m["test_accuracy"] is None
-                                             else f"{m['test_accuracy'] * 100:.1f}% on {m['n_test']} captures"))
-            for w in card["warnings"]:
+            result["loaded"] = self.pipeline.reload_model()
+            acc = result.get("test_accuracy")
+            job.say("Held-out accuracy: " + ("not measured" if acc is None
+                                             else f"{acc * 100:.1f}% on {result.get('n_test')} captures"))
+            for w in result.get("warnings", []):
                 job.say("Warning: " + w)
-            return {"test_accuracy": m["test_accuracy"], "n_test": m["n_test"], "split": m["split"],
-                    "warnings": card["warnings"], "loaded": loaded}
+            return result
 
         return self._run_job("train", "Training", work)
+
+    def _train_cmd(self, epochs: int, include_synthetic: bool, min_snr: float) -> list[str]:
+        cmd = [sys.executable, "-m", "dronedet.cli", "--root", str(self.cfg.root), "train", "--progress-json",
+               "--epochs", str(epochs), "--min-snr", str(min_snr), "--data", str(self.captures_dir),
+               "--out", str(self.model_path)]
+        return cmd + (["--include-synthetic"] if include_synthetic else [])
 
     def install_training_tools(self) -> dict:
         def work(job: Job):
