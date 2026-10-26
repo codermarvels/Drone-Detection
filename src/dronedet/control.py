@@ -471,7 +471,7 @@ class Controller:
 
         return self._run_job("synth", "Making synthetic test data", work)
 
-    def fetch_tiles(self, radius_km: float = 1.5) -> dict:
+    def fetch_tiles(self, radius_km: float = 1.0, url: str | None = None) -> dict:
         rc = self.cfg.app.get("receiver", {})
         lat, lon = float(rc.get("lat") or 0), float(rc.get("lon") or 0)
         if not lat and not lon:
@@ -480,15 +480,22 @@ class Controller:
         if not script.is_file():
             raise RuntimeError(f"{script} is missing")
         radius_km = max(0.2, min(float(radius_km), 5.0))
+        url = (url or "").strip()
+        if url and not (url.startswith("https://") and all(k in url for k in ("{z}", "{x}", "{y}"))):
+            raise ValueError("the tile server must be an https:// URL containing {z}, {x} and {y}")
 
         def work(job: Job):
             job.stage = "Downloading map tiles (needs internet once)"
             self._subprocess(job, [sys.executable, str(script), "--lat", str(lat), "--lon", str(lon),
-                                   "--radius-km", str(radius_km), "--out", str(self.cfg.path("data") / "tiles")],
-                             cwd=self.cfg.root)
+                                   "--radius-km", str(radius_km), "--out", str(self.cfg.path("data") / "tiles")]
+                             + (["--url", url] if url else []), cwd=self.cfg.root)
             return {"ok": True}
 
         return self._run_job("tiles", "Downloading map tiles", work)
+
+    def delete_tiles(self) -> dict:
+        shutil.rmtree(self.cfg.path("data") / "tiles", ignore_errors=True)
+        return {"ok": True}
 
     def close(self) -> None:
         self.cancel_job()

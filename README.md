@@ -146,13 +146,18 @@ Public datasets (DroneRF, CardRF, DroneDetect, RFUAV) were recorded on other rad
 
 ## Offline map
 
-The map uses tiles cached on disk in `data/tiles`. Fetch them once while online, for the area around your receiver:
+The map uses tiles cached on disk. Set the receiver location on the dashboard's Settings page and press **Download map** once while online, or from the command line:
 
 ```bash
-python tools/cache_tiles.py --lat 51.5007 --lon -0.1246 --radius-km 1.5
+python tools/cache_tiles.py --lat 51.5007 --lon -0.1246 --radius-km 1
 ```
 
-Then set `receiver.lat` and `receiver.lon` in `config/app.yaml`. The script uses OpenStreetMap by default and refuses more than 250 tiles, as their tile policy requires; pass `--url` to use another provider for a bigger area.
+The default source is OpenStreetMap. Its [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) allows only small one-off downloads, so the script identifies itself, waits between tiles and refuses more than 250 of them. OpenStreetMap may still refuse; then nothing is saved (the "Access blocked" picture it sends is detected and thrown away) and you have two other ways to get a map:
+
+- Paste another provider's tile URL (`https://…/{z}/{x}/{y}.png`, often with a free key) into **Tile server** on the Settings page, or pass it with `--url`. Check that its terms allow offline caching.
+- Copy an MBTiles map file to `data/map.mbtiles`. The dashboard serves it instead of downloaded tiles.
+
+**Delete downloaded map** on the Settings page clears `data/tiles`.
 
 ## Configuration
 

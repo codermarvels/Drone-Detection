@@ -660,14 +660,14 @@
     api("/api/tiles").then(function (d) {
       var box = $("map-tiles"); box.textContent = "";
       if (!d.zooms.length) { note.textContent = "No offline map yet: press Download map on the Settings page once while online. " + note.textContent; S.mapDone = true; return; }
-      var z = d.zooms.filter(function (q) { return q <= 16; }).pop() || d.zooms[0];
+      var z = d.zooms.filter(function (q) { return q <= 16; }).pop() || d.zooms[0], v = "?v=" + d.version;
       var n = Math.pow(2, z), xf = (lon + 180) / 360 * n, r = lat * Math.PI / 180;
       var yf = (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n;
       var W = $("map").offsetWidth, H = $("map").offsetHeight;
       var x0 = Math.floor(xf - W / 512) - 1, x1 = Math.floor(xf + W / 512) + 1, y0 = Math.floor(yf - H / 512) - 1, y1 = Math.floor(yf + H / 512) + 1;
       for (var x = x0; x <= x1; x++) for (var y = y0; y <= y1; y++) {
         if (y < 0 || y >= n) continue;
-        var img = new Image(); img.alt = ""; img.src = "/tiles/" + z + "/" + ((x % n) + n) % n + "/" + y + ".png";
+        var img = new Image(); img.alt = ""; img.src = "/tiles/" + z + "/" + ((x % n) + n) % n + "/" + y + ".png" + v;
         img.style.left = (W / 2 + (x - xf) * 256) + "px"; img.style.top = (H / 2 + (y - yf) * 256) + "px";
         img.onerror = function () { this.remove(); };
         box.appendChild(img);
@@ -727,7 +727,16 @@
     }, function (err) { $("loc-msg").textContent = "No location from the browser (" + err.message + "). Type it in, e.g. from a maps app."; },
     { timeout: 15000 });
   });
-  $("btn-tiles").addEventListener("click", function () { act("/api/tiles", { radius_km: +$("s-radius").value }); });
+  try { $("s-tileurl").value = localStorage.getItem("dronedet.tileurl") || ""; } catch (e) { /* storage off */ }
+  $("btn-tiles").addEventListener("click", function () {
+    var url = $("s-tileurl").value.trim();
+    try { localStorage.setItem("dronedet.tileurl", url); } catch (e) { /* storage off */ }
+    act("/api/tiles", { radius_km: +$("s-radius").value, url: url || null });
+  });
+  $("btn-tiles-del").addEventListener("click", function () {
+    if (!confirm("Delete the downloaded map tiles? The map stays blank until you download it again.")) return;
+    act("/api/tiles/delete", {}, function () { $("tiles-msg").textContent = "Deleted."; S.mapDone = false; renderMap(); });
+  });
   $("btn-quit").addEventListener("click", function () {
     if (!confirm("Quit the drone detector? The dashboard stops until you open the launcher again.")) return;
     api("/api/shutdown", {}).then(function () { document.body.innerHTML = '<p style="padding:40px;font:15px -apple-system,system-ui,sans-serif">The drone detector has stopped. You can close this tab.</p>'; });
