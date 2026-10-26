@@ -34,6 +34,13 @@ pip install -e .            # detector only: numpy, PyYAML, onnxruntime
 pip install -e ".[train]"   # add PyTorch for training (laptop, not needed on the Pi)
 ```
 
+In a conda environment (as on the Mac), take PyTorch from conda-forge instead of pip: pip's macOS PyTorch brings a second OpenMP runtime and training aborts with `OMP: Error #15`. The dashboard's **Install training tools** button does this for you, and offers **Repair training tools** if a pip copy is already there. By hand:
+
+```bash
+pip uninstall -y torch
+conda install -c conda-forge pytorch onnx onnxscript
+```
+
 ## Start it without typing: the Mac launcher
 
 In Finder, open the `drone-detection` folder and double-click **Drone Detector.command**. It activates the conda environment `dronedet`, starts the detector (on the HackRF if its tools are installed, otherwise the simulator) and opens the dashboard at <http://localhost:8080>. Drag it to the Dock to keep it one click away. Leave its Terminal window open while you work; close it, or press **Quit the app** on the Settings page, to stop. Double-clicking it again while it runs just reopens the dashboard.
