@@ -163,17 +163,39 @@ def cmd_synth(args, cfg):
 def cmd_train(args, cfg):
     from .training import dataset, train
 
+    def report(**kw):  # --progress-json: one JSON object per line, read by the dashboard
+        if args.progress_json:
+            print(json.dumps(kw), flush=True)
+
     drones = {c.id for c in cfg.classes if c.drone}
     data = Path(args.data) if args.data else cfg.path("data") / "captures"
+    report(stage="Reading recordings", fraction=0.0)
     ds = dataset.load(data, cfg.class_ids(), drones, cache_dir=cfg.path("data") / "cache" / "tiles",
-                      min_snr_db=args.min_snr)
+                      min_snr_db=args.min_snr,
+                      progress=lambda d, t: report(stage=f"Reading recordings · {d} of {t} captures",
+                                                   fraction=d / max(t, 1)))
     if not args.include_synthetic and dataset.drop_synthetic_if_real(ds):
         print("Real captures found, so synthetic sessions are left out (use --include-synthetic to mix them in).")
     print(f"{len(ds.y)} captures from {ds.report['sessions_used']} sessions "
-          f"({ds.report['captures_dropped_empty']} empty captures dropped).")
+          f"({ds.report['captures_dropped_empty']} empty captures dropped).", flush=True)
     out = Path(args.out) if args.out else cfg.path("model")
-    card = train.train(ds, out, drones, epochs=args.epochs, seed=args.seed)
+    last = {"epoch": 0}
+
+    def on_progress(p):
+        stage = f"Training · epoch {p['epoch']} of {p['epochs']}"
+        if p["loss"] is not None:
+            stage += f" · loss {p['loss']:.3f}"
+        report(stage=stage, fraction=p["fraction"])
+        if p["epoch"] != last["epoch"]:
+            last["epoch"] = p["epoch"]
+            if not args.progress_json:
+                print(f"\r{stage}", end="", flush=True)
+
+    report(stage="Training · starting", fraction=0.0)
+    card = train.train(ds, out, drones, epochs=args.epochs, seed=args.seed, progress=on_progress)
     m = card["metrics"]
+    report(result={"test_accuracy": m["test_accuracy"], "n_test": m["n_test"], "split": m["split"],
+                   "warnings": card["warnings"]})
     acc = "not measured (no test data)" if m["test_accuracy"] is None else f"{m['test_accuracy'] * 100:.1f}%"
     print(f"\nSaved {out} and {out.with_suffix('.json')}")
     print(f"Held-out accuracy: {acc} on {m['n_test']} captures, split {m['split']}")
@@ -262,6 +284,7 @@ def main(argv=None):
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--min-snr", type=float, default=6.0, help="drop signal-class captures weaker than this")
     p.add_argument("--include-synthetic", action="store_true")
+    p.add_argument("--progress-json", action="store_true", help=argparse.SUPPRESS)
     p.set_defaults(fn=cmd_train)
 
     p = sub.add_parser("calibrate", help="a few seconds of sweeps: noise floor and strongest bins")

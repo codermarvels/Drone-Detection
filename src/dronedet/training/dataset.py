@@ -35,13 +35,16 @@ def _cache_key(meta_path: Path) -> str:
 
 
 def load(captures_root: Path, classes: list[str], drone_classes: set[str], cache_dir: Path | None = None,
-         min_snr_db: float = 6.0) -> Dataset:
+         min_snr_db: float = 6.0, progress=None) -> Dataset:
     """Load every labelled session under captures_root.
 
     Captures labelled with a signal class but with nothing above the noise
     (SNR below min_snr_db) are dropped, since the emitter was probably not
     in the window when the capture was taken. Unlabelled sessions and
     unknown classes are skipped and counted in the report.
+
+    progress, if given, is called as progress(done, total) while captures
+    are read.
     """
     cache_dir = Path(cache_dir) if cache_dir else None
     if cache_dir:
@@ -50,11 +53,17 @@ def load(captures_root: Path, classes: list[str], drone_classes: set[str], cache
     X, y, sess, synth = [], [], [], []
     rep = {"sessions_used": 0, "sessions_unlabelled": 0, "sessions_unknown_class": 0,
            "captures_dropped_empty": 0, "per_class": {c: {"sessions": 0, "samples": 0, "synthetic_samples": 0} for c in classes}}
-    for m in list_sessions(captures_root):
+    sessions = list_sessions(captures_root)
+    total = sum(len(m.get("captures", [])) for m in sessions)
+    done = 0
+    for m in sessions:
         sdir = Path(m["path"])
         default = (m.get("label") or {}).get("class")
         used = False
         for cap in m.get("captures", []):
+            done += 1
+            if progress and (done % 20 == 0 or done == total):
+                progress(done, total)
             cid = cap.get("class") or default
             if not cid:
                 continue
