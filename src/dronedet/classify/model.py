@@ -75,7 +75,7 @@ def load_classifier(onnx_path: Path) -> OnnxClassifier | None:
     p = Path(onnx_path)
     if not p.exists() or not p.with_suffix(".json").exists():
         log.warning("no model at %s: tracks will be detected but not classified. "
-                    "Record and label captures, then run `dronedet train`.", p)
+                    "Record labelled sessions, then train (dashboard AI Model page, or `dronedet train`).", p)
         return None
     try:
         return OnnxClassifier(p)

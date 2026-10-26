@@ -34,6 +34,28 @@ pip install -e .            # detector only: numpy, PyYAML, onnxruntime
 pip install -e ".[train]"   # add PyTorch for training (laptop, not needed on the Pi)
 ```
 
+## Start it without typing: the Mac launcher
+
+In Finder, open the `drone-detection` folder and double-click **Drone Detector.command**. It activates the conda environment `dronedet`, starts the detector (on the HackRF if its tools are installed, otherwise the simulator) and opens the dashboard at <http://localhost:8080>. Drag it to the Dock to keep it one click away. Leave its Terminal window open while you work; close it, or press **Quit the app** on the Settings page, to stop. Double-clicking it again while it runs just reopens the dashboard.
+
+Everything else is done from the dashboard:
+
+| Task | Where |
+|---|---|
+| Start or stop the detector | **Start detector / Stop detector** button, top right |
+| Switch between the HackRF and the simulator | **HackRF / Simulator** switch in the sidebar, or Settings → Radio |
+| Calibrate (noise floor, strongest signals) | Settings → Radio → **Run calibration** |
+| Change the gain | Settings → Radio → Gain. Saves to `config/bands.yaml` and restarts the detector |
+| Record labelled sessions | Recordings → fill in class, drone, distance, place, number of captures → **Start recording** |
+| Fix or delete a session's label | Recordings → Sessions table → **Edit** / **Delete** |
+| Train the AI model | AI Model → **Train model**. Shows progress and loads the new model when done |
+| Install PyTorch for training (once, needs internet) | AI Model → **Install training tools** |
+| Set the receiver location and download the offline map | Settings → Receiver location |
+
+The command-line tools below still work and do the same things.
+
+On another computer, start it with `dronedet run --open` (add `--idle` to start with the detector stopped).
+
 ## First hardware check
 
 With the 2.4 GHz antenna on the HackRF:
@@ -43,7 +65,7 @@ hackrf_info                     # should list the board and firmware
 dronedet calibrate --source hackrf
 ```
 
-`calibrate` prints the noise floor and the strongest bins. Nearby Wi-Fi should show up as raised bins around 2412, 2437 or 2462 MHz. If nothing is raised, check the antenna connection.
+`calibrate` (or Settings → Run calibration in the dashboard) prints the noise floor and the strongest signals. Nearby Wi-Fi should show up as raised bins around 2412, 2437 or 2462 MHz. If nothing is raised, check the antenna connection.
 
 ## Run the detector
 
@@ -53,7 +75,7 @@ dronedet run --source hackrf    # insist on the radio
 dronedet run --source sim       # no radio: a simulated scene with Wi-Fi, Bluetooth, a DJI link at 20 s and ELRS at 40 s
 ```
 
-Open the dashboard at <http://localhost:8080>. It has the live spectrum and waterfall, the detections list, the AI analysis for the selected signal, the map, recordings, the model card, and settings. Detections are also logged to `data/detections.sqlite`.
+Open the dashboard at <http://localhost:8080>. The dashboard keeps running when the detector stops, so you can switch inputs, record and train from it. It has the live spectrum and waterfall, the detections list, the AI analysis for the selected signal, the map, recordings, the model card, and settings. Detections are also logged to `data/detections.sqlite`.
 
 Without a model, the detector still finds and tracks signals and flags unidentified hopping emitters; it just cannot name them.
 
@@ -72,7 +94,7 @@ The classifier is a small CNN (about 43,000 parameters) that looks at a 256 × 2
 
 ### 1. Record labelled sessions
 
-Either use the dashboard (Recordings page: pick the class, fill in the device and distance, press Start recording), or the command line:
+Either use the dashboard (Recordings page: pick the class, fill in the device and distance, leave "How to capture" on *Whole band, stepped*, set 300 captures, press Start recording; it stops by itself), or the command line:
 
 ```bash
 # DJI drone flying, controller on, 50 m away
@@ -101,7 +123,7 @@ Class ids are in `config/classes.yaml`: `dji_ocusync`, `wifi_drone`, `elrs_2g4`,
 dronedet train --epochs 20
 ```
 
-This writes `models/cnn.onnx` and `models/cnn.json`, and prints held-out accuracy and recall per class. Restart `dronedet run` to load it. Training runs fine on a laptop CPU.
+Or press **Train model** on the dashboard's AI Model page. This writes `models/cnn.onnx` and `models/cnn.json`, and reports held-out accuracy and recall per class. The dashboard loads the new model straight away; from the command line, restart `dronedet run` to load it. Training runs fine on a laptop CPU.
 
 ### Trying the pipeline without a drone
 
@@ -133,7 +155,7 @@ Then set `receiver.lat` and `receiver.lon` in `config/app.yaml`. The script uses
 | `config/classes.yaml` | Classes (model output order), which ones are drones, vote rules |
 | `config/app.yaml` | Receiver location, detection thresholds, capture duty limit, web host and port |
 
-By default the dashboard only listens on `127.0.0.1`. On a Pi you reach from another machine, set `web.host: 0.0.0.0`.
+By default the dashboard only listens on `127.0.0.1`. On a Pi you reach from another machine, set `web.host: 0.0.0.0`; anyone on that network can then also start, stop, record and train, so only do this on a network you trust.
 
 ### Adding 5.8 GHz later
 

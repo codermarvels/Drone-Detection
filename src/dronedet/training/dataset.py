@@ -126,3 +126,12 @@ def split_by_session(ds: Dataset, test_frac: float = 0.25, seed: int = 0):
             train.extend(rows[:cut])
             test.extend(rows[cut:])
     return np.array(train, int), np.array(test, int), kind
+
+
+def drop_synthetic_if_real(ds: Dataset) -> bool:
+    """Leave synthetic sessions out when real ones exist. Returns True if any were dropped."""
+    if not (ds.report.get("real_samples", 0) and ds.synthetic.any()):
+        return False
+    keep = ~ds.synthetic
+    ds.X, ds.y, ds.session, ds.synthetic = ds.X[keep], ds.y[keep], ds.session[keep], ds.synthetic[keep]
+    return True

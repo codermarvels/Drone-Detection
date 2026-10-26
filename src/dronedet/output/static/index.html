@@ -22,6 +22,7 @@
     <div class="device-title"><span class="dot" id="dev-dot"></span><span id="dev-name">HackRF One</span></div>
     <span class="muted small" id="dev-status">Connecting…</span>
     <span class="muted small" id="dev-antenna">Antenna: 2.4 GHz · 5.8 GHz later</span>
+    <div class="seg small src-seg" role="group" aria-label="Input" id="src-seg"></div>
   </div>
 </nav>
 
@@ -38,9 +39,19 @@
         <button type="button" data-hours="24">24 Hours</button>
       </div>
       <button type="button" class="pill" id="btn-record"><span class="rec-dot"></span><span id="rec-text">Record</span></button>
-      <button type="button" class="pill dark" id="btn-pause">Pause scan</button>
+      <button type="button" class="pill dark" id="btn-run">Start detector</button>
     </div>
   </header>
+
+  <section class="card job" id="job" aria-live="polite" hidden>
+    <div class="job-main">
+      <div class="col grow-1"><span class="strong" id="job-title"></span><span class="muted small" id="job-stage"></span></div>
+      <button type="button" class="pill" id="job-cancel">Cancel</button>
+      <button type="button" class="pill" id="job-close" hidden>Close</button>
+    </div>
+    <div class="progress" id="job-bar"><div class="progress-fill" id="job-fill"></div></div>
+    <details class="job-log"><summary class="muted small">Details</summary><pre id="job-log"></pre></details>
+  </section>
 
   <section class="card status" aria-label="Status" data-views="overview spectrum detections map">
     <div class="status-main">
@@ -103,28 +114,86 @@
 
   <section class="card pad-l" aria-label="Recordings" data-views="recordings">
     <h2>Record labelled samples</h2>
-    <p class="muted">Recording saves every IQ capture the detector takes, with the label below, into <code id="cap-dir">data/captures</code>. Record each drone at a few distances, indoors and out, and record the empty band at the same place as a background session. You can fix a label later with <code>dronedet label</code>.</p>
+    <p class="muted">Each recording is one session of IQ captures with the label below, saved in <code id="cap-dir">data/captures</code>. Record each drone at a few distances, indoors and out, and record the empty band at the same place as a background session. You can fix a label afterwards in the table below. The detector starts by itself if it is stopped.</p>
     <form class="form" id="rec-form">
       <label>Class<select id="f-class"></select></label>
-      <label>Drone or device<input id="f-model" placeholder="e.g. DJI Mini 4 Pro"></label>
+      <label>Drone or device<input id="f-model" placeholder="e.g. Autel EVO Lite+"></label>
       <label>Distance (m)<input id="f-dist" type="number" min="0" step="1"></label>
       <label>Environment<select id="f-env"><option value="">–</option><option>outdoor</option><option>indoor</option></select></label>
+      <label>How to capture<select id="f-mode"><option value="band">Whole band, stepped (training)</option><option value="tracks">Only tracked signals</option></select></label>
+      <label>Captures<input id="f-count" type="number" min="1" step="1" value="300"></label>
       <label class="wide">Notes<input id="f-notes"></label>
-      <button type="submit" class="pill dark" id="f-submit">Start recording</button>
+      <div class="wide rec-row"><button type="submit" class="pill dark" id="f-submit">Start recording</button><span class="muted small" id="rec-status"></span></div>
     </form>
-    <h2 class="mt">Sessions</h2>
-    <div class="table-wrap"><table class="table" id="sess-table"><thead><tr><th>Session</th><th>Class</th><th>Device</th><th>Captures</th><th>Source</th></tr></thead><tbody></tbody></table></div>
+    <div class="note" id="rec-src-note" hidden></div>
+  </section>
+
+  <section class="card pad-l" aria-label="Sessions" data-views="recordings">
+    <div class="card-head"><h2>Sessions</h2><span class="muted small" id="sess-sum"></span></div>
+    <div class="table-wrap"><table class="table" id="sess-table"><thead><tr><th>Session</th><th>Class</th><th>Device</th><th>Distance</th><th>Place</th><th>Captures</th><th>Source</th><th></th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section class="card pad-l" aria-label="Train" data-views="model">
+    <div class="card-head"><h2>Train the AI model</h2><span class="muted small" id="train-sum"></span></div>
+    <p class="muted">Training uses every labelled session on the Recordings page, tests on whole sessions it did not train on, and loads the new model into the detector when it finishes. It runs on this computer's CPU, a few minutes for a few thousand captures.</p>
+    <div class="table-wrap"><table class="table" id="data-table"><thead><tr><th>Class</th><th>Sessions</th><th>Captures</th><th>Ready?</th></tr></thead><tbody></tbody></table></div>
+    <div class="note" id="tools-note" hidden>Training needs PyTorch, which is not installed in this Python yet. Install it once (about 300 MB, needs internet), then train offline from then on. <button type="button" class="pill inline" id="btn-install">Install training tools</button></div>
+    <form class="form" id="train-form">
+      <label>Epochs<input id="t-epochs" type="number" min="1" max="200" value="20"></label>
+      <label class="check"><input type="checkbox" id="t-synth"> Mix in synthetic test sessions</label>
+      <div class="wide rec-row"><button type="submit" class="pill dark" id="btn-train">Train model</button>
+        <button type="button" class="pill" id="btn-synth" title="Writes simulated sessions for each class, to check the pipeline works before you have real recordings">Make synthetic test data</button></div>
+    </form>
   </section>
 
   <section class="card pad-l" aria-label="AI model" data-views="model">
-    <h2>AI model</h2>
+    <h2>Current model</h2>
     <div id="model-body"></div>
   </section>
 
+  <section class="card pad-l" aria-label="Radio" data-views="settings">
+    <h2>Radio</h2>
+    <div class="form">
+      <label>Input<select id="s-source"></select></label>
+      <div class="rec-row end"><button type="button" class="pill dark" id="s-run">Start detector</button></div>
+    </div>
+    <h3>Gain</h3>
+    <p class="muted">Lower the LNA gain if a strong nearby signal (like your own Wi-Fi router) makes everything look loud; raise it for distant drones. Saving restarts the detector with the new gain. Each recording session stores the gain it was made with.</p>
+    <form class="form" id="gain-form">
+      <label>LNA gain (dB)<select id="s-lna"></select></label>
+      <label>VGA gain (dB)<select id="s-vga"></select></label>
+      <label class="check"><input type="checkbox" id="s-amp"> RF amplifier (+14 dB)</label>
+      <div class="rec-row end"><button type="submit" class="pill dark">Save gain</button><span class="muted small" id="gain-msg"></span></div>
+    </form>
+    <div class="note" id="amp-note" hidden>The RF amplifier is for weak, distant signals only. A strong signal close to the antenna with the amplifier on can damage the HackRF's front end.</div>
+    <h3>Calibration</h3>
+    <p class="muted">Takes 100 sweeps and reports the noise floor and the strongest frequencies. Nearby Wi-Fi usually shows around 2412, 2437 or 2462 MHz. Run it after changing the gain, the antenna or the place.</p>
+    <div class="rec-row"><button type="button" class="pill dark" id="btn-cal">Run calibration</button><span class="muted small" id="cal-when"></span></div>
+    <div id="cal-body"></div>
+  </section>
+
+  <section class="card pad-l" aria-label="Location" data-views="settings">
+    <h2>Receiver location</h2>
+    <p class="muted">Where the HackRF is. It centres the map.</p>
+    <form class="form" id="loc-form">
+      <label>Name<input id="s-name" maxlength="60"></label>
+      <label>Latitude<input id="s-lat" type="number" step="any" min="-90" max="90" required></label>
+      <label>Longitude<input id="s-lon" type="number" step="any" min="-180" max="180" required></label>
+      <div class="wide rec-row"><button type="submit" class="pill dark">Save location</button><button type="button" class="pill" id="btn-geo">Use this computer's location</button><span class="muted small" id="loc-msg"></span></div>
+    </form>
+    <h3>Offline map</h3>
+    <p class="muted">Downloads OpenStreetMap tiles around the receiver once, so the map works offline afterwards. Needs internet for this step only.</p>
+    <div class="form">
+      <label>Area<select id="s-radius"><option value="0.5">0.5 km around</option><option value="1" selected>1 km around</option><option value="1.5">1.5 km around</option></select></label>
+      <div class="rec-row end"><button type="button" class="pill" id="btn-tiles">Download map</button></div>
+    </div>
+  </section>
+
   <section class="card pad-l" aria-label="Settings" data-views="settings">
-    <h2>Settings</h2>
-    <p class="muted">Settings live in <code>config/</code>: bands in <code>bands.yaml</code>, classes and vote rules in <code>classes.yaml</code>, location, thresholds and web port in <code>app.yaml</code>. Restart <code>dronedet run</code> after a change.</p>
+    <h2>Detector</h2>
     <div id="settings-body"></div>
+    <p class="muted">Other settings live in <code>config/</code>: classes and vote rules in <code>classes.yaml</code>, detection thresholds and the web port in <code>app.yaml</code>. Restart the app after editing those by hand.</p>
+    <div class="rec-row"><button type="button" class="pill" id="btn-quit">Quit the app</button><span class="muted small">Stops the detector and the dashboard. Open it again with the Drone Detector launcher.</span></div>
   </section>
 </main>
 </div>

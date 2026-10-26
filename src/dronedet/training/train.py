@@ -37,7 +37,13 @@ def augment(x: np.ndarray, rng, background: np.ndarray | None) -> np.ndarray:
 
 
 def train(ds: Dataset, out_path: Path, drone_classes: set[str], epochs: int = 15, batch: int = 32,
-          lr: float = 2e-3, seed: int = 0, threads: int | None = None) -> dict:
+          lr: float = 2e-3, seed: int = 0, threads: int | None = None, progress=None) -> dict:
+    """Train, evaluate on held-out sessions, and write the ONNX model and its card.
+
+    progress, if given, is called after every batch with a dict holding
+    epoch, epochs, fraction (0-1 over the whole run) and the last epoch's
+    loss. It may raise to cancel; nothing is written then.
+    """
     import torch
     from torch import nn
 
@@ -82,6 +88,9 @@ def train(ds: Dataset, out_path: Path, drone_classes: set[str], epochs: int = 15
             opt.step()
             total += loss.item() * len(rows)
             n += len(rows)
+            if progress:
+                progress({"epoch": ep + 1, "epochs": epochs, "fraction": (ep + n / len(order)) / epochs,
+                          "loss": history[-1] if history else None})
         sched.step()
         history.append(round(total / max(n, 1), 4))
         log.info("epoch %d/%d loss %.4f", ep + 1, epochs, history[-1])

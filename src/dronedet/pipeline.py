@@ -65,13 +65,20 @@ class Pipeline:
         self._baseline_window = float(d["baseline_s"])
         self.tracker = Tracker(timeout_s=float(d["track_timeout_s"]))
         self.agg = FrameAggregator(self.frame_s)
-        self.clf = load_classifier(model_path or cfg.path("model"))
+        self.model_path = Path(model_path or cfg.path("model"))
+        self.clf = load_classifier(self.model_path)
         self.drone_ids = {k.id for k in cfg.classes if k.drone}
         self.store = store
         self.state = State()
         self.lock = threading.Lock()
         self.paused = False
         self.recorder: Recorder | None = None
+        self.rec_mode = "tracks"          # "tracks": captures the detector takes; "band": step across the band
+        self.rec_target: int | None = None
+        self.rec_interval = 0.2           # band mode: source seconds between captures, like `dronedet record`
+        self._rec_last = -1e9
+        self._rec_failures = 0
+        self.last_recording: dict | None = None
         self.run_id = time.strftime("%Y%m%d-%H%M%S")
         self._t0: float | None = None
         self._wall0 = time.time()
@@ -97,20 +104,54 @@ class Pipeline:
             self._thread.join(timeout=5)
         self._flush(force=True)
 
-    def set_recording(self, on: bool, label: dict | None = None) -> dict:
+    @property
+    def running(self) -> bool:
+        return bool(self._thread and self._thread.is_alive())
+
+    def reload_model(self) -> bool:
+        """Load the model file again (after training) and restart every track's vote."""
+        clf = load_classifier(self.model_path)
+        with self.lock:
+            self.clf = clf
+            for tr in self.tracker.active():
+                tr.votes.clear()
+                tr.label, tr.confidence, tr.probs = None, 0.0, None
+        return clf is not None
+
+    def set_recording(self, on: bool, label: dict | None = None, mode: str = "tracks",
+                      target: int | None = None) -> dict:
+        """Start or stop a recording session.
+
+        mode "tracks" saves every capture the detector takes of the signals it
+        tracks. mode "band" steps the 20 MHz capture window across the band
+        every rec_interval seconds, like `dronedet record`, so a hopping link
+        is caught wherever it is; it stops by itself after `target` captures.
+        """
         with self.lock:
             if on and self.recorder is None:
                 b = self.band
                 self.recorder = Recorder(self.cfg.path("data") / "captures", label=label, band=b.id,
                                          gain={"lna_db": b.lna_db, "vga_db": b.vga_db, "amp": b.amp},
                                          source=self.source.name)
+                self.rec_mode = "band" if mode == "band" else "tracks"
+                self.rec_target = int(target) if target else None
+                self._rec_last = -1e9
+                self._rec_failures = 0
             elif not on and self.recorder is not None:
-                self.recorder = None
+                self._finish_recording()
             return self.recording_status()
+
+    def _finish_recording(self) -> None:
+        r = self.recorder
+        self.recorder = None
+        if r is not None:
+            self.last_recording = {"session": r.dir.name, "count": r.count, "failures": self._rec_failures}
 
     def recording_status(self) -> dict:
         r = self.recorder
-        return {"on": r is not None, "session": r.dir.name if r else None, "count": r.count if r else 0}
+        return {"on": r is not None, "session": r.dir.name if r else None, "count": r.count if r else 0,
+                "mode": self.rec_mode, "target": self.rec_target, "failures": self._rec_failures,
+                "last": self.last_recording}
 
     # -- loop -------------------------------------------------------------
     def run(self) -> None:
@@ -136,6 +177,8 @@ class Pipeline:
             self.state.sweeps += 1
         if self.paused:
             return
+        if self.recorder is not None and self.rec_mode == "band":
+            self._record_band(t)
         level = self.baseline.update(power_db)
         frame = self.agg.add(t, power_db)
         if frame is not None:
@@ -169,7 +212,31 @@ class Pipeline:
         settled = tr.label not in (None, UNKNOWN) and tr.captures >= self.caps_per_track
         return not settled or t - tr.last_capture > 10 * self.cap_interval  # re-check settled tracks slowly
 
+    def _band_centers(self) -> list[float]:
+        half = self.band.sample_rate / 2
+        return list(np.arange(self.band.f_min_hz + half, self.band.f_max_hz - half + 1, self.band.sample_rate))
+
+    def _record_band(self, t: float) -> None:
+        rec = self.recorder
+        if rec is None or t - self._rec_last < self.rec_interval:
+            return
+        self._rec_last = t
+        centers = self._band_centers()
+        cap = self.source.capture(float(centers[rec.count % len(centers)]))
+        if cap is None:
+            self._rec_failures += 1
+            return
+        with self.lock:
+            self.state.captures += 1
+            self.state.capture_time += cap.duration_s
+        rec.add(cap, extra={"mode": "band", "truth_hint": cap.meta.get("sim_truth")})
+        if self.rec_target and rec.count >= self.rec_target:
+            with self.lock:
+                self._finish_recording()
+
     def _maybe_capture(self, t: float) -> None:
+        if self.recorder is not None and self.rec_mode == "band":
+            return  # the radio is busy recording
         elapsed = max(t - (self._t0 or t), 1e-3)
         if self.state.capture_time / elapsed > self.max_duty:
             return
@@ -189,6 +256,9 @@ class Pipeline:
         rec = self.recorder
         if rec is not None:
             rec.add(cap, track_id=tr.id, extra={"predicted": tr.label, "truth_hint": cap.meta.get("sim_truth")})
+            if self.rec_target and rec.count >= self.rec_target:
+                with self.lock:
+                    self._finish_recording()
 
     def _capture_center(self, tr: Track) -> float:
         """Where to put the 20 MHz capture window for this track.
@@ -269,6 +339,7 @@ class Pipeline:
                 "seq": s.seq,
                 "time": self.wall(self._last_sweep_t or 0) if self._t0 is not None else time.time(),
                 "source": self.source.name,
+                "source_problem": getattr(self.source, "problem", None),
                 "paused": self.paused,
                 "band": {"id": self.band.id, "label": self.band.label, "f_min_hz": self.band.f_min_hz,
                          "f_max_hz": self.band.f_max_hz, "bin_hz": self.band.bin_hz,

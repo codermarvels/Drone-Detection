@@ -67,3 +67,18 @@ class FrameAggregator:
             self._acc = None
             return frame
         return None
+
+
+class NullSource:
+    """No radio: what the dashboard shows while the detector is stopped."""
+
+    name = "none"
+
+    def frames(self) -> Iterator[SweepFrame]:
+        return iter(())
+
+    def capture(self, center_hz: float) -> Capture | None:
+        return None
+
+    def close(self) -> None:
+        pass
