@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import sqlite3
 import threading
+import time
 from pathlib import Path
 
 SCHEMA = """
@@ -49,11 +52,33 @@ class Store:
             )
             self.db.commit()
 
-    def since(self, t: float, limit: int = 500) -> list[dict]:
+    def since(self, t: float, limit: int | None = 500) -> list[dict]:
         with self.lock:
-            cur = self.db.execute("SELECT * FROM tracks WHERE last_seen >= ? ORDER BY last_seen DESC LIMIT ?", (t, limit))
+            cur = self.db.execute("SELECT * FROM tracks WHERE last_seen >= ? ORDER BY last_seen DESC LIMIT ?",
+                                  (t, -1 if limit is None else limit))
             cols = [c[0] for c in cur.description]
             return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+    def csv_since(self, t: float) -> str:
+        """Every track seen since t, oldest first, as CSV for a spreadsheet."""
+        out = io.StringIO()
+        w = csv.writer(out)
+        w.writerow(["first_seen", "last_seen", "duration_s", "band", "frequency_mhz", "width_mhz", "peak_db",
+                    "hopping", "class", "confidence", "drone", "captures", "summary", "run", "track"])
+        for r in reversed(self.since(t, limit=None)):
+            f = r["center_hz"] or 0
+            w.writerow([
+                time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(r["first_seen"])),
+                time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(r["last_seen"])),
+                round(r["last_seen"] - r["first_seen"], 1),
+                "5.8 GHz" if f > 4e9 else "2.4 GHz",
+                round(f / 1e6, 3), round((r["width_hz"] or 0) / 1e6, 3),
+                None if r["peak_db"] is None else round(r["peak_db"], 1),
+                "yes" if r["hopping"] else "no", r["label"] or "",
+                "" if r["confidence"] is None or not r["label"] else round(r["confidence"], 3),
+                "yes" if r["drone"] else "no", r["captures"], r["summary"], r["run"], r["id"],
+            ])
+        return out.getvalue()
 
     def close(self) -> None:
         with self.lock:

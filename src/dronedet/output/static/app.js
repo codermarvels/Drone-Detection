@@ -128,7 +128,7 @@
   function kick() { pollTimer && clearTimeout(pollTimer); pollTimer = setTimeout(poll, 50); }
   function loadHistory() {
     if (S.hours === 0) return;
-    api("/api/detections?hours=" + S.hours).then(function (d) { S.history = d.rows; renderDetections(); });
+    api("/api/detections?hours=" + (S.hours < 0 ? 87600 : S.hours)).then(function (d) { S.history = d.rows; renderDetections(); });
   }
 
   // ---- render -----------------------------------------------------------
@@ -371,7 +371,9 @@
     var list = $("det-list"), rows, live = S.hours === 0;
     rows = live ? st.tracks : S.history;
     if (S.view === "overview" && rows.length > 6) rows = rows.slice(0, 6);
-    $("det-title").textContent = live ? "Detections" : "Detections · last " + (S.hours === 1 ? "hour" : "24 hours");
+    $("det-title").textContent = live ? "Detections" : S.hours < 0 ? "Detections · all saved" :
+      "Detections · last " + ({1: "hour", 24: "24 hours", 168: "7 days"}[S.hours] || S.hours + " hours");
+    $("det-export").href = "/api/detections.csv?hours=" + (S.hours > 0 ? S.hours : 0);
     list.textContent = "";
     if (!rows.length) { list.appendChild(el("div", "empty", live ? "Nothing above the noise floor right now." : "No detections in this period.")); return; }
     var sel = selectedTrack();
