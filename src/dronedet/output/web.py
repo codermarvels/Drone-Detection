@@ -102,6 +102,19 @@ def make_handler(ctl, store, data_dir: Path):
                 hours = float(q.get("hours", ["1"])[0])
                 rows = store.since(time.time() - hours * 3600) if store else []
                 return self._json({"rows": rows})
+            if u.path == "/api/detections.csv":
+                hours = float(q.get("hours", ["0"])[0] or 0)
+                since = time.time() - hours * 3600 if hours > 0 else 0
+                body = (store.csv_since(since) if store else "").encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/csv; charset=utf-8")
+                self.send_header("Content-Disposition",
+                                 'attachment; filename="detections-%s.csv"' % time.strftime("%Y%m%d-%H%M"))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
             if u.path == "/api/sessions":
                 out = []
                 rec = ctl.pipeline.recorder

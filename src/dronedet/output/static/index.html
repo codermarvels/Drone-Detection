@@ -37,6 +37,8 @@
         <button type="button" data-hours="0" class="on">Live</button>
         <button type="button" data-hours="1">1 Hour</button>
         <button type="button" data-hours="24">24 Hours</button>
+        <button type="button" data-hours="168">7 Days</button>
+        <button type="button" data-hours="-1">All</button>
       </div>
       <button type="button" class="pill" id="btn-record"><span class="rec-dot"></span><span id="rec-text">Record</span></button>
       <button type="button" class="pill dark" id="btn-run">Start detector</button>
@@ -97,6 +99,7 @@
       <div class="card-head pad">
         <h2 id="det-title">Detections</h2>
         <a href="#detections" id="see-all">See all</a>
+        <a href="/api/detections.csv" id="det-export" download>Export CSV</a>
       </div>
       <div id="det-list"></div>
     </section>

@@ -82,7 +82,7 @@ dronedet run --source hackrf    # insist on the radio
 dronedet run --source sim       # no radio: a simulated scene with Wi-Fi, Bluetooth, a DJI link at 20 s and ELRS at 40 s
 ```
 
-Open the dashboard at <http://localhost:8080>. The dashboard keeps running when the detector stops, so you can switch inputs, record and train from it. It has the live spectrum and waterfall, the detections list, the AI analysis for the selected signal, the map, recordings, the model card, and settings. Detections are also logged to `data/detections.sqlite`.
+Open the dashboard at <http://localhost:8080>. The dashboard keeps running when the detector stops, so you can switch inputs, record and train from it. It has the live spectrum and waterfall, the detections list, the AI analysis for the selected signal, the map, recordings, the model card, and settings. Every detection is saved to `data/detections.sqlite`, so nothing is lost when you stop the detector or quit. On the Detections page, pick 1 Hour, 24 Hours, 7 Days or All to look back, and press Export CSV to download that period as a spreadsheet (time, band, frequency, width, power, class, confidence).
 
 Without a model, the detector still finds and tracks signals and flags unidentified hopping emitters; it just cannot name them.
 

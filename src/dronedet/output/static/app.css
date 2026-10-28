@@ -104,6 +104,7 @@ body[data-view="settings"] [data-views~="settings"]{display:flex}
 body[data-view="spectrum"] #spec{height:260px}body[data-view="spectrum"] #wf{height:320px}
 body[data-view="map"] .map{min-height:520px}
 body:not([data-view="overview"]) #see-all{display:none}
+body:not([data-view="detections"]) #det-export{display:none}
 @media (max-width:600px){.stat{padding:2px 14px}.headline{font-size:17px}}
 h3{margin:8px 0 0;font-size:14px;font-weight:600}
 .pill:disabled,.seg button:disabled{opacity:.45;cursor:not-allowed}

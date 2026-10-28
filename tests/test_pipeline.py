@@ -1,6 +1,7 @@
 """End to end in simulated mode: no HackRF needed."""
 
 import json
+import time
 
 import pytest
 
@@ -72,3 +73,17 @@ def test_train_export_and_classify(cfg):
     assert p.clf is not None
     p.run()
     assert any(t["votes"] > 0 for t in p.snapshot()["tracks"])
+
+
+def test_store_csv_export(tmp_path):
+    store = Store(tmp_path / "d.sqlite")
+    now = time.time()
+    store.upsert([{"run": "r1", "id": 1, "first_seen": now - 5, "last_seen": now, "center_hz": 2.437e9,
+                   "width_hz": 2e7, "peak_db": -40.0, "hopping": 0, "label": "wifi", "confidence": 0.9,
+                   "drone": 0, "captures": 2, "summary": "wide steady"}])
+    store.close()
+    store = Store(tmp_path / "d.sqlite")  # reopened, as after a restart
+    lines = store.csv_since(0).splitlines()
+    assert lines[0].startswith("first_seen,last_seen")
+    assert len(lines) == 2 and ",2.4 GHz,2437.0,20.0,-40.0,no,wifi,0.9,no,2," in lines[1]
+    assert len(store.csv_since(now + 60).splitlines()) == 1
