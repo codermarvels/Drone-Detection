@@ -122,7 +122,7 @@ Good data matters more than anything else:
 - Have at least 2 sessions per class; 5 or more is better. Training holds out whole sessions to test on, so a class with one session gets an optimistic score, and the model card warns about it.
 - Captures of a signal class with nothing above the noise floor are dropped automatically at training time.
 
-Class ids are in `config/classes.yaml`: `dji_ocusync`, `wifi_drone`, `elrs_2g4`, `wifi`, `bluetooth`, `microwave`, `noise`.
+Class ids are in `config/classes.yaml`: drones `dji_ocusync`, `wifi_drone`, `elrs_2g4` (FPV), `autel_skylink`, `hexacopter_2g4`, `mini_trg`, `soccer_drone`, and background `wifi`, `bluetooth`, `microwave`, `noise`. Labels are stored by id, so adding a class never invalidates sessions already recorded; retrain after any change to the list.
 
 ### 2. Train
 

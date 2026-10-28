@@ -4,7 +4,13 @@
 classes:
   - {id: dji_ocusync, label: "DJI OcuSync",          drone: true,  bands: [ism_2g4, ism_5g8]}
   - {id: wifi_drone,  label: "Wi-Fi drone",          drone: true,  bands: [ism_2g4]}
-  - {id: elrs_2g4,    label: "ExpressLRS 2.4 GHz",   drone: true,  bands: [ism_2g4]}
+  - {id: elrs_2g4,    label: "FPV (ExpressLRS 2.4)", drone: true,  bands: [ism_2g4]}
+  # One class per drone in our own fleet, so the dashboard names the drone.
+  # Pick these with `dronedet record --class ...` or on the Recordings page.
+  - {id: autel_skylink,  label: "Autel",            drone: true,  bands: [ism_2g4, ism_5g8]}
+  - {id: hexacopter_2g4, label: "Hexacopter",       drone: true,  bands: [ism_2g4]}
+  - {id: mini_trg,       label: "Mini TRG",         drone: true,  bands: [ism_2g4]}
+  - {id: soccer_drone,   label: "Soccer drone",     drone: true,  bands: [ism_2g4]}
   - {id: wifi,        label: "Wi-Fi",                drone: false, bands: [ism_2g4, ism_5g8]}
   - {id: bluetooth,   label: "Bluetooth",            drone: false, bands: [ism_2g4]}
   - {id: microwave,   label: "Microwave oven",       drone: false, bands: [ism_2g4]}
